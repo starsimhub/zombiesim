@@ -1,2 +1,0 @@
-# zombiesim
-Disease modeling demo
