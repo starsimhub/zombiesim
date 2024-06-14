@@ -4,26 +4,27 @@ import numpy as np
 import pandas as pd
 
 class Zombie(ss.SIR):
+    """ Extent the base SIR class to represent Zombies! """
     def __init__(self, pars=None, **kwargs):
-        super().__init__() # Don't pass kwargs here, as it raises a value error
+        super().__init__()
 
         self.default_pars(
             inherit = True, # Inherit from SIR defaults
             dur_inf = ss.constant(v=1000), # Once a zombie, always a zombie! Units are years.
 
-            p_fast = ss.bernoulli(p=0.10), # Fast zombies attack more people!
-            dur_fast = ss.constant(v=1000), # Once fast, always fast. Units are years.
-            p_symptomatic = ss.bernoulli(p=1.0), # Zombies are symptomatic
-            p_death_on_zombie_infection = ss.bernoulli(p=0.25),
+            p_fast = ss.bernoulli(p=0.10), # Probability of being fast
+            dur_fast = ss.constant(v=1000), # Duration of fast before becoming slow
+            p_symptomatic = ss.bernoulli(p=1.0), # Probability of symptoms
+            p_death_on_zombie_infection = ss.bernoulli(p=0.25), # Probability of death at time of infection
 
             p_death = ss.bernoulli(p=1), # All zombies die instead of recovering
         )
         self.update_pars(pars, **kwargs)
 
         self.add_states(
-            ss.BoolArr('fast', default=self.pars.p_fast),
-            ss.BoolArr('symptomatic', default=False),
-            ss.FloatArr('ti_slow'),
+            ss.BoolArr('fast', default=self.pars.p_fast), # True if fast
+            ss.BoolArr('symptomatic', default=False), # True if symptomatic
+            ss.FloatArr('ti_slow'), # Time index of changing from fast to slow
         )
 
         # Counters for reporting
@@ -33,24 +34,25 @@ class Zombie(ss.SIR):
         return
 
     def update_pre(self):
+        """ Updates states before transmission on this timestep """
         self.cum_deaths += np.count_nonzero(self.ti_dead <= self.sim.ti)
 
         super().update_pre()
 
-        # Fast to slow transition
+        # Transition from fast to slow
         fast_to_slow_uids = (self.infected & self.fast & (self.ti_slow <= self.sim.ti)).uids
         self.fast[fast_to_slow_uids] = False
 
         return
 
     def set_prognoses(self, uids, source_uids=None):
-        """ Set prognoses """
+        """ Set prognoses of new zombies """
         super().set_prognoses(uids, source_uids)
 
         # Choose which new zombies will be symptomatic
         self.symptomatic[uids] = self.pars.p_symptomatic.rvs(uids)
 
-        # Handle fast-->slow transition
+        # Set timer for fast to slow transition
         fast_uids = uids[self.fast[uids]]
         dur_fast = self.pars.dur_fast.rvs(fast_uids)
         self.ti_slow[fast_uids] = np.round(self.sim.ti + dur_fast / self.sim.dt)
@@ -68,6 +70,7 @@ class Zombie(ss.SIR):
         return
 
     def init_results(self):
+        """ Initialize results """
         super().init_results()
         sim = self.sim
         self.results += [ ss.Result(self.name, 'cum_congenital', sim.npts, dtype=int, scale=True) ]
@@ -75,6 +78,7 @@ class Zombie(ss.SIR):
         return
 
     def update_results(self):
+        """ Update results on each time step """
         super().update_results()
         res = self.results
         ti = self.sim.ti
@@ -84,15 +88,16 @@ class Zombie(ss.SIR):
 
 
 class DeathZombies(ss.Deaths):
+    """ Extension of Deaths to make some agents who die turn into zombies """
     def __init__(self, pars=None, metadata=None, **kwargs):
         super().__init__(death_rate=kwargs.pop('death_rate', None))
         self.default_pars(
             inherit = True,
-            p_zombie_on_natural_death = ss.bernoulli(p=0.75), # Susceptible people who die can become zombies
+            p_zombie_on_natural_death = ss.bernoulli(p=0.75), # Probability of becoming a zombie on death
         )
-        # Need to remove death_rate due to special handling in the base class
+
         kwargs.pop('death_rate', None)
-        self.update_pars(pars, **kwargs) # Not needed with inherit
+        self.update_pars(pars, **kwargs)
 
         return
 
@@ -100,29 +105,36 @@ class DeathZombies(ss.Deaths):
         """ Select people to die """
 
         # Ensure that zombies do not die of natural causes
-        not_zombie = self.sim.people.alive.asnew()
+        not_zombie = self.sim.people.alive.asnew() # Zombies do not die of natural (demographic) causes
         for name, disease in self.sim.diseases.items():
             if 'zombie' in name:
                 not_zombie = not_zombie & (~disease.infected)
 
         death_uids = self.pars.death_rate.filter(not_zombie.uids)
         zombie_uids, death_uids = self.pars.p_zombie_on_natural_death.filter(death_uids, both=True)
+
+        # These uids will die
         if len(death_uids):
             self.sim.people.request_death(death_uids)
+
+        # And these uids will become zombies
         if len(zombie_uids):
             # If we have fast_zombie and slow_zombie types, choose slow_zombie
-            zombie = 'zombie' if 'zombie' in self.sim.diseases else 'slow_zombie' # If multiple types of zombies, assume slow
+            zombie = 'zombie' if 'zombie' in self.sim.diseases else 'slow_zombie'
             self.sim.diseases[zombie].set_prognoses(zombie_uids)
+
         return len(death_uids)
 
 
 class KillZombies(ss.Intervention):
+    """ Intervention that kills symptomatic zombies at a user-specified rate """
     def __init__(self, year, rate, **kwargs):
         self.requires = Zombie
         self.year = sc.promotetoarray(year)
         self.rate = sc.promotetoarray(rate)
         super().__init__(**kwargs)
 
+        # The killing rate is an interpolation of year-rate values
         self.p = ss.bernoulli(p= lambda self, sim, uids: np.interp(sim.year, self.year, self.rate*sim.dt))
         return
 
@@ -163,7 +175,7 @@ class zombie_vaccine(ss.sir_vaccine):
 
     
 class ZombieConnector(ss.Connector):
-    """ Connect Fast and Slow Zombies """
+    """ Connect fast and slow zombies so agents don't become double-zombies """
 
     def __init__(self, pars=None, **kwargs):
         super().__init__(label='Zombie Connector', requires=[Zombie])
