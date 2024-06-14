@@ -6,6 +6,7 @@ Zombiesim
 Zombiesim is an agent-based model implemented in the `Starsim <https://starsim.org>` framework. It implements a zombie simulation to demonstrate how to run a simulation, create and analyze scenarios, introduce interventions, and plot results.
 
 An interactive version of this notebook is available on Binder:
+
 .. image:: https://mybinder.org/badge_logo.svg
    :target: https://mybinder.org/v2/gh/starsimhub/zombiesim/HEAD?labpath=zombie.ipynb
 
