@@ -26,11 +26,15 @@ class Zombie(ss.SIR):
             ss.FloatArr('ti_slow'),
         )
 
+        # Counters for reporting
         self.cum_congenital = 0 # Count cumulative congenital cases
+        self.cum_deaths = 0 # Count cumulative deaths
 
         return
 
     def update_pre(self):
+        self.cum_deaths += np.count_nonzero(self.ti_dead <= self.sim.ti)
+
         super().update_pre()
 
         # Fast to slow transition
@@ -53,11 +57,12 @@ class Zombie(ss.SIR):
 
         # Handle possible immediate death on zombie infection
         dead_uids = self.pars.p_death_on_zombie_infection.filter(uids)
-        self.ti_dead[dead_uids] = self.sim.ti # Immediate death
+        self.cum_deaths += len(dead_uids)
+        self.sim.people.request_death(dead_uids)
         return
 
     def set_congenital(self, target_uids, source_uids=None):
-        """ Congenital zombies! """
+        """ Congenital zombies """
         self.cum_congenital += len(target_uids)
         self.set_prognoses(target_uids, source_uids)
         return
@@ -66,6 +71,7 @@ class Zombie(ss.SIR):
         super().init_results()
         sim = self.sim
         self.results += [ ss.Result(self.name, 'cum_congenital', sim.npts, dtype=int, scale=True) ]
+        self.results += [ ss.Result(self.name, 'cum_deaths', sim.npts, dtype=int, scale=True) ]
         return
 
     def update_results(self):
@@ -73,6 +79,7 @@ class Zombie(ss.SIR):
         res = self.results
         ti = self.sim.ti
         res.cum_congenital[ti] = self.cum_congenital
+        res.cum_deaths[ti] = self.cum_deaths
         return
 
 
@@ -181,48 +188,3 @@ class ZombieConnector(ss.Connector):
         slow.rel_sus[fast.infected] = self.pars.rel_sus
 
         return
-
-class ZombieAnalyzer(ss.Analyzer):
-
-    def __init__(self, **kwargs):
-        self.requires = [Zombie]
-        self.data = []
-        self.df = None # Created on finalize
-
-        super().__init__(**kwargs)
-        return
-
-    def init_results(self):
-        super().init_results()
-        self.results += ss.Result(self.name, 'n_congenital', self.sim.npts, dtype=int)
-        return
-
-    def apply(self, sim):
-        super().apply(sim)
-
-        n_congenital = 0
-        for name, disease in sim.diseases.items():
-            if 'zombie' not in name:
-                continue
-
-            just_born = (sim.people.age >=0 ) & (sim.people.age < sim.dt)
-            n_congenital += np.count_nonzero(disease.infected[just_born])
-
-            self.data.append([self.sim.year, n_congenital])
-        return
-
-    def finalize(self):
-        super().finalize()
-        self.df = pd.DataFrame(self.data, columns = ['year', 'new_congential'])
-
-        self.df['cum_congenital'] = self.df['new_congential'].cumsum()
-
-        return
-
-    def plot(self):
-        import seaborn as sns
-
-        d = pd.melt(self.df, id_vars=['year', 'arm'], var_name='channel', value_name='Value')
-        g = sns.relplot(data=d, kind='line', x='year', hue='arm', col='channel', y='Value', palette='Set1', facet_kws={'sharey':False})
-
-        return g.figure
