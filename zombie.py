@@ -1,7 +1,6 @@
 import starsim as ss
 import sciris as sc
 import numpy as np
-import pandas as pd
 
 class Zombie(ss.SIR):
     """ Extent the base SIR class to represent Zombies! """
