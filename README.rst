@@ -13,11 +13,11 @@ An interactive version of this notebook is available on Binder:
 Requirements
 ------------
 
-Starsim 0.5.3
+Starsim 2.1.1
 
-Python 3.9-3.12
+Python 3.9 or newer
 
-We recommend, but do not require, installing Starsim in a virtual environment, such as `Anaconda <https://www.anaconda.com/products>`__.
+We recommend, but do not require, installing Starsim in a virtual environment, such as `MiniForge <https://github.com/conda-forge/miniforge>`__.
 
 Installation
 ------------
