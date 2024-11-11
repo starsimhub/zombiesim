@@ -8,7 +8,6 @@ class Zombie(ss.SIR):
         super().__init__()
 
         self.define_pars(
-            inherit = True, # Inherit from SIR defaults
             dur_inf = ss.constant(v=1000), # Once a zombie, always a zombie! Units are years.
 
             p_fast = ss.bernoulli(p=0.10), # Probability of being fast
@@ -71,7 +70,6 @@ class Zombie(ss.SIR):
     def init_results(self):
         """ Initialize results """
         super().init_results()
-        sim = self.sim
         self.define_results(
             ss.Result('cum_congenital', dtype=int, scale=True),
             ss.Result('cum_deaths', dtype=int, scale=True),
@@ -93,7 +91,6 @@ class DeathZombies(ss.Deaths):
     def __init__(self, pars=None, metadata=None, **kwargs):
         super().__init__(death_rate=kwargs.pop('death_rate', None))
         self.define_pars(
-            inherit = True,
             p_zombie_on_natural_death = ss.bernoulli(p=0.75), # Probability of becoming a zombie on death
         )
         kwargs.pop('death_rate', None)
